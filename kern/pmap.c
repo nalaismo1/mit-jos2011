@@ -98,19 +98,17 @@ boot_alloc(uint32_t n)
 	// to a multiple of PGSIZE.
 	//
 	// LAB 2: Your code here.
-	if(n  == 0)
-		return nextfree;
+	if (!n) 
+		return (void *)nextfree;
+	result=nextfree + n;
+	if (result < nextfree)
+		panic("No enough memory!");
+	result=(char *)nextfree;
+	nextfree=ROUNDUP((char *)result,PGSIZE);
+	return (void *)result;
+	
 
-	result = nextfree;
-	nextfree += (n + PGSIZE - 1) / PGSIZE * PGSIZE;
-	cprintf("nextfree: %x\n", (uint32_t)nextfree);
-	cprintf("o: %x\n", (npages + 256 - npages_basemem) * PGSIZE);
-	// we assume memory size > 1M
-	//if((uint32_t)nextfree > (uint32_t)KADDR((npages + 256 - npages_basemem) * PGSIZE))
-	if((uint32_t)nextfree > (uint32_t)((npages + 256 - npages_basemem) * PGSIZE + KERNBASE))
-		panic("boot_alloc: Out of Memory!");
-
-	return result;
+	return NULL;
 }
 
 // Set up a two-level page table:
@@ -130,6 +128,9 @@ mem_init(void)
 
 	// Find out how much memory the machine has (npages & npages_basemem).
 	i386_detect_memory();
+
+	// Remove this line when you're ready to test this function.
+	//panic("mem_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
@@ -151,7 +152,7 @@ mem_init(void)
 	// each physical page, there is a corresponding struct Page in this
 	// array.  'npages' is the number of physical pages in memory.
 	// Your code goes here:
-	pages = (struct Page *)boot_alloc(sizeof(struct Page) * npages);
+	pages=(struct Page *)boot_alloc(npages*sizeof(struct Page));
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -255,28 +256,16 @@ page_init(void)
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
 	size_t i;
-
-	// physical page 0 contains real-mode IDT and BIOS, so marks it as in use
-	pages[0].pp_ref = 1;
-	pages[0].pp_link = 0;
-
-	// mark other base memory as free
-	for (i = 1; i < npages_basemem; i++) {
+	size_t min=IOPHYSMEM/PGSIZE;
+	size_t max=(size_t)boot_alloc(0)/PGSIZE;
+	for (i = 0; i < npages; i++) {
 		pages[i].pp_ref = 0;
-		pages[i].pp_link = page_free_list;
-		page_free_list = &pages[i];
-	}
-
-	// mark kernel and pages struct as in use
-	//for(; i < nextfree / PGSIZE; i++){
-	for(; i <= PGNUM(PADDR(&pages[npages])); i++){
-		pages[i].pp_ref = 1;
-		pages[i].pp_link = 0;
-	}
-
-	// mark all other memory as free
-	for (; i < (npages + 256 - npages_basemem); i++) {
-		pages[i].pp_ref = 0;
+		if(!i)
+			continue;
+		
+		if(i>=min && i<max)
+			continue;
+	
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
 	}
@@ -293,20 +282,17 @@ page_init(void)
 // Hint: use page2kva and memset
 struct Page *
 page_alloc(int alloc_flags)
-{
+{	
 	// Fill this function in
 	struct Page *p;
-
-	p = page_free_list;
-	if(p)
-		page_free_list = p->pp_link;
-	else
-		page_free_list = NULL;
-
-	if(p && (alloc_flags & ALLOC_ZERO))
-		memset(page2kva(p), 0, PGSIZE);
-
-	return p;
+	if (page_free_list){
+		p=page_free_list;
+		page_free_list=page_free_list->pp_link;
+		if(alloc_flags & ALLOC_ZERO)
+			memset(page2kva(p),0,PGSIZE);
+		return p;
+	}
+	return 0;
 }
 
 //
@@ -316,9 +302,14 @@ page_alloc(int alloc_flags)
 void
 page_free(struct Page *pp)
 {
+
+		pp->pp_link=page_free_list;
+		page_free_list=pp;
+		
+	
+	
+		
 	// Fill this function in
-	pp->pp_link = page_free_list;
-	page_free_list = pp;
 }
 
 //
