@@ -257,7 +257,7 @@ page_init(void)
 	// free pages!
 	size_t i;
 	size_t min=IOPHYSMEM/PGSIZE;
-	size_t max=(size_t)boot_alloc(0)/PGSIZE;
+	size_t max=(size_t)(((int)boot_alloc(0)-KERNBASE)/PGSIZE);
 	for (i = 0; i < npages; i++) {
 		pages[i].pp_ref = 0;
 		if(!i)
